@@ -43,31 +43,38 @@ class SentenceTokenizer:
         self.vocab = vocab
         self.vocab_idx = vocab_idx
 
-        result_list = []
+        #result_list = []
         #tokenized = [self.tokenizer(text) for text in texts]
-        for text in tokenized:
-            text = self.text_to_idx(text)
-            result_list.append(text)
+        #for text in tokenized:
+        #    text = self.text_to_idx(text)
+        #    result_list.append(text)
 
-        result = np.zeros(shape=(n, self.max_sentences, self), dtype=np.int32)
-        for i in range(n):
-            text = result_list[i]
-            result[i, :len(text)] = text
+        result = np.zeros(shape=(n, self.max_sentences, self.max_sentence_len), dtype=np.int32)
+        for i, sentences in enumerate(tokenized):
+            for j, sent in enumerate(sentences):
+                if j< self.max_sentences:
+                    for k, word in enumerate(sent):
+                        if (k < self.max_sentence_len) and (word in self.vocab_idx):
+                            result[i,j,k] = self.vocab_idx[word]
+                              
 
         return result
 
-    def text_to_idx(self, tokenized):
+    def text_to_idx(self, ):
         return [[self.vocab_idx[t] for i, t in enumerate(sentence) if (t in self.vocab_idx) and (i < self.max_sentence_len)]
                  for j, sentence in enumerate(tokenized) if j < self.max_sentences]
 
     def transform(self, texts):
         n = len(texts)
-        result = np.zeros(shape=(n, self.max_sentences), dtype=np.int32)
-
-        for i in range(n):
-            text = self.tokenizer(texts[i])
-            text = self.text_to_idx(text)
-            result[i, :len(text)] = text
+        tokenized = [self.tokenizer(text) for text in texts]
+        
+        result = np.zeros(shape=(n, self.max_sentences, self.max_sentence_len), dtype=np.int32)
+        for i, sentences in enumerate(tokenized):
+            for j, sent in enumerate(sentences):
+                if j< self.max_sentences:
+                    for k, word in enumerate(sent):
+                        if (k < self.max_sentence_len) and (word in self.vocab_idx):
+                            result[i,j,k] = self.vocab_idx[word]
 
         return result
 
