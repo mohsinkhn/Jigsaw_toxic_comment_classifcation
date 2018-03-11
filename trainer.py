@@ -71,13 +71,13 @@ if __name__=="__main__":
     path = '../input/'
     utility_path = '../utility/'
     comp = 'jigsaw-toxic-comment-classification-challenge/'
-    EMBEDDING_FILE=f'{utility_path}crawl-300d-2M.vec'
-    TRAIN_DATA_FILE=f'{path}train.csv'
-    TEST_DATA_FILE=f'{path}test.csv'
+    EMBEDDING_FILE=f'{utility_path}glove.42B.300d.txt'
+    TRAIN_DATA_FILE=f'{path}train_preprocessed_v1.csv'
+    TEST_DATA_FILE=f'{path}test_preprocessed_v1.csv'
     
-    MAX_FEATURES= 200000
+    MAX_FEATURES= 150000
     MAX_LEN = 200
-    MODEL_IDENTIFIER = "BASE_123"
+    MODEL_IDENTIFIER = "GLOVE_PREPROCSSED_2"
     
     train = pd.read_csv(TRAIN_DATA_FILE)
     test = pd.read_csv(TEST_DATA_FILE)
@@ -94,10 +94,10 @@ if __name__=="__main__":
     cvlist2 = list(StratifiedShuffleSplit(n_splits=5, test_size=0.05, random_state=786).split(train, train['target_str'].astype('category')))
     
     #NOrmalize text
-    for df in train, test:
-        df["comment_text"] = normalizeString(df["comment_text"])
+    #for df in train, test:
+    #    df["comment_text"] = normalizeString(df["comment_text"])
         
-    #Tokenize comments    
+    #Tokenize comments    S
     tok = Tokenizer(max_features=MAX_FEATURES, max_len=MAX_LEN, tokenizer=wordpunct_tokenize)
     X = tok.fit_transform(pd.concat([train["comment_text"].astype(str), test["comment_text"].astype(str)]))
     X_train = X[:len(train), :]
@@ -117,34 +117,46 @@ if __name__=="__main__":
     random_indices = np.random.randint(0, len(oov_list), 10)
     print("Some out of vocab words are".format(np.array(oov_list)[random_indices]))
     
-    checkPoint = ModelCheckpoint("Model_"+str(MODEL_IDENTIFIER)+".check", save_best_only=True, verbose=1)
-    callbacks = [checkPoint]
+    #checkPoint = ModelCheckpoint("Model_"+str(MODEL_IDENTIFIER)+".check", save_best_only=True, verbose=1)
+    #callbacks = [checkPoint]
     #Model params to be used
     MODEL_PARAMS = {
             "max_seq_len": MAX_LEN,
             "embed_vocab_size":MAX_FEATURES+1,
             "embed_dim": 300,
-            "spatial_dropout": 0.2,
-            "gru_dim" : 300,
+            "spatial_dropout": 0.5,
+            "gru_dim" : 150,
             "cudnn" : True,
             "bidirectional" : True,
-            "gru_layers": 1,
+            "gru_layers": 2,
             "pooling": 'max_attention',
-            "fc_dim": 512,
+            "fc_dim": 256,
             "fc_dropout": 0.2,
-            "fc_layers": 1,
+            "fc_layers": 0,
             "optimizer": 'adam',
             "out_dim": 6,
             "batch_size": 256,
             "epochs": 10,
             "callbacks": [],
-            "model_id": MODEL_IDENTIFIER,
+            "model_id": MODEL_IDENTIFIER,  
             "embed_kwargs": {"weights": [embedding_matrix]}
             }
     
     #Initialize model
     model = GRUClassifier(**MODEL_PARAMS)
+    check_filename="Model_"+str(MODEL_IDENTIFIER)+".check"
+    y_preds, y_trues, y_test = outoffold_crossvalidator(model, X_train, y, cvlist1, check_filename=check_filename,
+                                                      predict_test=True, X_test=X_test)
     
-    y_preds, y_trues, _ = shuffle_crossvalidator(model, X_train, y, cvlist2, callbacks)
+    #write out train oof and test
+    oof_preds: pd.DataFrame = train[['id']]
+    for i, col in enumerate(list_classes):
+        oof_preds.loc[:, col] = y_preds[:, i]
     
+    test_preds: pd.DataFrame = test[['id']]
+    for i, col in enumerate(list_classes):
+        test_preds.loc[:, col] = y_test[:, i]   
+    
+    oof_preds.to_csv("../utility/oof_{}.csv".format(MODEL_IDENTIFIER), index=False)
+    test_preds.to_csv("../utility/test_{}.csv".format(MODEL_IDENTIFIER), index=False)
     

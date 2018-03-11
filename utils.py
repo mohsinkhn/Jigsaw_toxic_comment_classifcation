@@ -11,27 +11,36 @@ import keras.backend as K
 import gc
 from RocAucEvaluation import RocAucEvaluation
 from sklearn.metrics import roc_auc_score
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+import copy
 
-def shuffle_crossvalidator(model, X, y, cvlist, callbacks, X_test=None, predict_test=False, 
-                           scorer = roc_auc_score):
+def shuffle_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predict_test=False, 
+                           scorer = roc_auc_score, check_filename='tmp'):
     y_trues = []
     y_preds = []
     scores = []
     y_test_preds = []
     for tr_index, val_index in cvlist:
+        calls = copy.copy(callbacks)
         X_tr, y_tr = X[tr_index, :], y[tr_index, :]
         X_val, y_val = X[val_index, :], y[val_index, :]
 
         RocAuc = RocAucEvaluation(validation_data=(X_val, y_val), interval=1)
-        callbacks.append(RocAuc) 
+        checkPoint = ModelCheckpoint(check_filename, monitor='val_score', save_best_only=True,
+                                     save_weights_only=True, verbose=1, mode='max')
+        earlystop = EarlyStopping(monitor="val_score", patience=3, mode="max")
         
-        model.set_params(**{'callbacks':callbacks})
+        calls.append(RocAuc) 
+        calls.append(checkPoint)
+        calls.append(earlystop)
+        
+        model.set_params(**{'callbacks':calls})
         model.fit(X_tr, y_tr)
 
         y_pred = model.predict(X_val)
         
         if predict_test:
-            y_test_preds = model.predict(X_test)
+            y_test_preds.append(model.predict(X_test))
         score = scorer(y_val, y_pred)
         scores.append(score)
         print("Score for this fold is ", score)
@@ -50,22 +59,30 @@ def shuffle_crossvalidator(model, X, y, cvlist, callbacks, X_test=None, predict_
     return y_preds, y_trues, y_test_preds
 
 
-def outoffold_crossvalidator(model, X, y, cvlist, callbacks, X_test=None, predict_test=False, 
-                           scorer = roc_auc_score):
+def outoffold_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predict_test=False, 
+                           scorer = roc_auc_score, check_filename='tmp'):
     y_preds = np.zeros(y.shape)
-
+    y_test_preds = []
     for tr_index, val_index in cvlist:
+        calls = copy.copy(callbacks)
         X_tr, y_tr = X[tr_index, :], y[tr_index, :]
         X_val, y_val = X[val_index, :], y[val_index, :]
         
         RocAuc = RocAucEvaluation(validation_data=(X_val, y_val), interval=1)
-        callbacks.append(RocAuc)        
-        model.set_params(**{'callbacks':callbacks})
+        checkPoint = ModelCheckpoint(check_filename, monitor='val_score', save_best_only=True,
+                                     save_weights_only=True, verbose=1, mode='max')
+        earlystop = EarlyStopping(monitor="val_score", patience=3, mode="max")
+        
+        calls.append(RocAuc) 
+        calls.append(checkPoint)
+        calls.append(earlystop)
+        
+        model.set_params(**{'callbacks':calls})
         model.fit(X_tr, y_tr)
 
         y_pred = model.predict(X_val)
         if predict_test:
-            y_test_preds = model.predict(X_test)
+            y_test_preds.append(model.predict(X_test))
         print("Score for this fold is ", scorer(y_val, y_pred))
         y_preds[val_index] = y_pred
         K.clear_session()

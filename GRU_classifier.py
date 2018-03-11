@@ -156,7 +156,7 @@ class GRUClassifier(BaseEstimator, ClassifierMixin):
     def predict(self, X, y=None):
         if self.model:
             if np.any(isinstance(c, ModelCheckpoint) for c in self.callbacks):
-                self.model = load_model("Model_"+str(self.model_id)+".check")
+                self.model.load_weights("Model_"+str(self.model_id)+".check")
             y_hat = self.model.predict(X, batch_size=1024)
         else:
             raise ValueError("Model not fit yet")

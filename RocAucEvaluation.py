@@ -19,4 +19,5 @@ class RocAucEvaluation(Callback):
         if epoch % self.interval == 0:
             y_pred = self.model.predict(self.X_val, verbose=0)
             score = roc_auc_score(self.y_val, y_pred)
+            logs["val_score"] = score
             print("\n ROC-AUC - epoch: %d - score: %.6f \n" % (epoch+1, score))
