@@ -12,11 +12,11 @@ import numpy as np
 #from keras.preprocessing.text import Tokenizer
 from keras.optimizers import Adam, RMSprop
 from keras.models import Model, load_model
-from keras.layers import Input, Embedding, SpatialDropout1D, CuDNNGRU, GRU, Bidirectional, Dropout, Dense, PReLU
+from keras.layers import Input, Embedding, SpatialDropout1D, CuDNNGRU, GRU, Bidirectional, Dropout, Dense, PReLU, Flatten()
 from keras.layers import concatenate, GlobalAveragePooling1D, GlobalMaxPooling1D
 from keras.callbacks import ModelCheckpoint
 from ZeroMaskedLayer import ZeroMaskedLayer
-from AttentionLayer import AttentionLayer
+from AttentionLayer import AttentionLayer, AttentionWithContext
 
 from sklearn.base import BaseEstimator, ClassifierMixin
 
@@ -41,6 +41,7 @@ class GRUClassifier(BaseEstimator, ClassifierMixin):
                  fc_dim=256,  #Dimension for fully connected layer
                  fc_dropout=0.2, #Dropout ot be used before fully connected layer
                  fc_layers=1,
+                 prelu=True,
                  optimizer= 'adam', #Optimizer to be used
                  out_dim = 6,
                  batch_size=256,  
@@ -52,6 +53,7 @@ class GRUClassifier(BaseEstimator, ClassifierMixin):
                  embed_kwargs={}, #Dict of keyword arguments for word embeddings layer
                  gru_kwargs={}, #Dict of keyword arguments for gru layer
                  opt_kwargs={}, #Dict of keyword arguments for optimization algo
+                 fc_kwargs={}
                 ):
         
         args, _, _, values = inspect.getargvalues(inspect.currentframe())
@@ -89,7 +91,21 @@ class GRUClassifier(BaseEstimator, ClassifierMixin):
         if self.pooling == 'attention':
             x = AttentionLayer(self.max_seq_len)(x)
             x = concatenate([x, state])
-            
+        
+        if self.pooling == "mean_max":
+            x1 = GlobalAveragePooling1D()(x)
+            x2 = GlobalMaxPooling1D()(x)
+            #x3 = AttentionLayer(self.max_seq_len)(x)
+            x = concatenate([x1, x2, state])
+        
+        if self.pooling == "max_attention2":
+            #x1 = GlobalAveragePooling1D()(x)
+            x2 = GlobalMaxPooling1D()(x)
+            #attention_probs = Dense(input_dims, activation='softmax', name='attention_probs')(inputs)
+            #attention_mul = merge([inputs, attention_probs], output_shape=32, name='attention_mul', mode='mul')
+            x3 = Dense(300)(Flatten()(x))
+            x = concatenate([x3, x2, state])
+
         elif self.pooling == 'max_attention':
             #x1 = GlobalAveragePooling1D()(emb)
             x2 = GlobalMaxPooling1D()(x)
@@ -101,8 +117,9 @@ class GRUClassifier(BaseEstimator, ClassifierMixin):
     def _fc_block(self, x):
         #Fully connected layer
         x = Dropout(self.fc_dropout)(x)
-        x = Dense(self.fc_dim)(x)
-        x = PReLU()(x)
+        x = Dense(self.fc_dim, **self.fc_kwargs)(x)
+        if self.prelu:
+            x = PReLU()(x)
         return x
         
     def _build_model(self):

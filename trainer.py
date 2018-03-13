@@ -26,11 +26,11 @@ from sklearn.model_selection import cross_val_predict
 
 from nltk.tokenize import word_tokenize, wordpunct_tokenize, TweetTokenizer, MWETokenizer, ToktokTokenizer
 from nltk.corpus import stopwords
-
+from nltk.stem import PorterStemmer
 import unicodedata
 from collections import Counter
 import itertools
-
+from ExtraFeats import Extrafeats
 np.random.seed(786)
 
 from Tokenizer import Tokenizer
@@ -58,8 +58,8 @@ def normalizeString(series):
     series = series.str.lower()
     series = series.str.replace(r"(\n){1,}", " ")
     series = series.str.replace(r"\'", "")
-    series = series.str.replace(r"\-", "")
-    series = series.str.replace(r"[^0-9a-z]+", " ")
+    #series = series.str.replace(r"\-", "")
+    series = series.str.replace(r"[^0-9a-z\"(!!){2,}]+", " ")
     series = series.str.replace("([a-z0-9]{2,}\.){2,}[a-z]{2,}", " ") 
     series = series.str.replace(" \d ", "")
     return series
@@ -71,14 +71,14 @@ if __name__=="__main__":
     path = '../input/'
     utility_path = '../utility/'
     comp = 'jigsaw-toxic-comment-classification-challenge/'
-    EMBEDDING_FILE=f'{utility_path}glove.42B.300d.txt'
-    TRAIN_DATA_FILE=f'{path}train_preprocessed_v1.csv'
-    TEST_DATA_FILE=f'{path}test_preprocessed_v1.csv'
+    EMBEDDING_FILE=f'{utility_path}crawl-300d-2M.vec'
+    TRAIN_DATA_FILE=f'{path}train.csv'
+    TEST_DATA_FILE=f'{path}test.csv'
     
-    MAX_FEATURES= 150000
-    MAX_LEN = 200
-    MODEL_IDENTIFIER = "GLOVE_PREPROCSSED_2"
-    
+    MAX_FEATURES= 195000
+    MAX_LEN = 150
+    MODEL_IDENTIFIER = "fastext_minimum_preproc_reg"
+
     train = pd.read_csv(TRAIN_DATA_FILE)
     test = pd.read_csv(TEST_DATA_FILE)
 
@@ -94,12 +94,17 @@ if __name__=="__main__":
     cvlist2 = list(StratifiedShuffleSplit(n_splits=5, test_size=0.05, random_state=786).split(train, train['target_str'].astype('category')))
     
     #NOrmalize text
-    #for df in train, test:
-    #    df["comment_text"] = normalizeString(df["comment_text"])
+    for df in train, test:
+        df["comment_text"] = normalizeString(df["comment_text"])
+    #stemmer = PorterStemmer()
+    #def custom_tokenize(text):
+    #    tokens = wordpunct_tokenize(text)
+    #    tokens = [stemmer.stem(token) for token in tokens]
+    #    return tokens
         
     #Tokenize comments    S
     tok = Tokenizer(max_features=MAX_FEATURES, max_len=MAX_LEN, tokenizer=wordpunct_tokenize)
-    X = tok.fit_transform(pd.concat([train["comment_text"].astype(str), test["comment_text"].astype(str)]))
+    X = tok.fit_transform(pd.concat([train["comment_text"].astype(str).fillna("na"), test["comment_text"].astype(str).fillna("na")]))
     X_train = X[:len(train), :]
     X_test = X[len(train):, :]
     
@@ -124,31 +129,45 @@ if __name__=="__main__":
             "max_seq_len": MAX_LEN,
             "embed_vocab_size":MAX_FEATURES+1,
             "embed_dim": 300,
+            "trainable": False,
             "spatial_dropout": 0.5,
-            "gru_dim" : 150,
+            "gru_dim" : 400,
             "cudnn" : True,
             "bidirectional" : True,
-            "gru_layers": 2,
-            "pooling": 'max_attention',
-            "fc_dim": 256,
-            "fc_dropout": 0.2,
-            "fc_layers": 0,
+            "gru_layers": 1,
+            "pooling": 'mean_max',
+            "fc_dim": 512,
+            "fc_dropout": 0.1,
+            "fc_layers": 1,
             "optimizer": 'adam',
             "out_dim": 6,
-            "batch_size": 256,
+            "batch_size": 128,
             "epochs": 10,
             "callbacks": [],
             "model_id": MODEL_IDENTIFIER,  
-            "embed_kwargs": {"weights": [embedding_matrix]}
+            "mask_zero":False,
+            "embed_kwargs": {"weights": [embedding_matrix], "mask_zero":False},
+            "opt_kwargs": {"lr":0.001, "decay":0.00001, "clipnorm":10.0},
+            "gru_kwargs":{"kernel_regularizer":regularizers.l2(0), "recurrent_regularizer":regularizers.l2(0)}
             }
     
     #Initialize model
+    def schedule(epoch):
+        if epoch == 0:
+            return 0.001
+        if epoch == 1:
+            return 0.001
+        if epoch == 2:
+            return 0.001
+        return 0.001
+        
+    callbacks=[LearningRateScheduler(schedule)]
     model = GRUClassifier(**MODEL_PARAMS)
     check_filename="Model_"+str(MODEL_IDENTIFIER)+".check"
     y_preds, y_trues, y_test = outoffold_crossvalidator(model, X_train, y, cvlist1, check_filename=check_filename,
-                                                      predict_test=True, X_test=X_test)
+                                                      predict_test=True, X_test=X_test, callbacks=callbacks)
     
-    #write out train oof and test
+    #write out train oof and test and configuration file
     oof_preds: pd.DataFrame = train[['id']]
     for i, col in enumerate(list_classes):
         oof_preds.loc[:, col] = y_preds[:, i]

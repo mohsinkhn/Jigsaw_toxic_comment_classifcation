@@ -13,17 +13,22 @@ from RocAucEvaluation import RocAucEvaluation
 from sklearn.metrics import roc_auc_score
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 import copy
-
+from scipy.stats import gmean
 def shuffle_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predict_test=False, 
-                           scorer = roc_auc_score, check_filename='tmp'):
+                           scorer = roc_auc_score, check_filename='tmp', multiinput=False):
     y_trues = []
     y_preds = []
     scores = []
     y_test_preds = []
     for tr_index, val_index in cvlist:
         calls = copy.copy(callbacks)
-        X_tr, y_tr = X[tr_index, :], y[tr_index, :]
-        X_val, y_val = X[val_index, :], y[val_index, :]
+        
+        if multiinput:
+            X_tr, y_tr = [x[tr_index, :] for x in X], y[tr_index, :]
+            X_val, y_val = [x[val_index, :] for x in X], y[val_index, :]
+        else:
+            X_tr, y_tr = X[tr_index, :], y[tr_index, :]
+            X_val, y_val = X[val_index, :], y[val_index, :]            
 
         RocAuc = RocAucEvaluation(validation_data=(X_val, y_val), interval=1)
         checkPoint = ModelCheckpoint(check_filename, monitor='val_score', save_best_only=True,
@@ -52,7 +57,7 @@ def shuffle_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predi
     y_trues = np.concatenate(y_trues)
     y_preds = np.concatenate(y_preds)
     if predict_test:
-        y_test_preds = np.mean(y_test_preds, axis=0)
+        y_test_preds = gmean(y_test_preds, axis=0)
     score = scorer(y_trues, y_preds)
     print("Overall score on 10 fold CV is {}".format(score))
     
@@ -60,13 +65,17 @@ def shuffle_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predi
 
 
 def outoffold_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, predict_test=False, 
-                           scorer = roc_auc_score, check_filename='tmp'):
+                           scorer = roc_auc_score, check_filename='tmp', multiinput=False):
     y_preds = np.zeros(y.shape)
     y_test_preds = []
     for tr_index, val_index in cvlist:
         calls = copy.copy(callbacks)
-        X_tr, y_tr = X[tr_index, :], y[tr_index, :]
-        X_val, y_val = X[val_index, :], y[val_index, :]
+        if multiinput:
+            X_tr, y_tr = [x[tr_index, :] for x in X], y[tr_index, :]
+            X_val, y_val = [x[val_index, :] for x in X], y[val_index, :]
+        else:
+            X_tr, y_tr = X[tr_index, :], y[tr_index, :]
+            X_val, y_val = X[val_index, :], y[val_index, :]   
         
         RocAuc = RocAucEvaluation(validation_data=(X_val, y_val), interval=1)
         checkPoint = ModelCheckpoint(check_filename, monitor='val_score', save_best_only=True,
@@ -89,7 +98,7 @@ def outoffold_crossvalidator(model, X, y, cvlist, callbacks=[], X_test=None, pre
         gc.collect()
         
     if predict_test:
-        y_test_preds = np.mean(y_test_preds, axis=0)
+        y_test_preds = gmean(y_test_preds, axis=0)
     score = scorer(y, y_preds)
     print("Overall score on 10 fold CV is {}".format(score))
     
