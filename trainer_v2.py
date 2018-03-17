@@ -35,7 +35,7 @@ from ExtraFeats import ExtraFeats
 np.random.seed(786)
 
 from Tokenizer import Tokenizer
-from GRU_classifier_extrafeats import GRUClassifier
+from GRU_classifier_extrafeats_v2 import GRUClassifier
 from utils import shuffle_crossvalidator, outoffold_crossvalidator, initialize_embeddings, get_coefs
 
 #%%
@@ -77,8 +77,8 @@ if __name__=="__main__":
     TEST_DATA_FILE=f'{path}test.csv'
     
     MAX_FEATURES= 195000
-    MAX_LEN = 200
-    MODEL_IDENTIFIER = "fastext_extrafeats_newattnv2"
+    MAX_LEN = 250
+    MODEL_IDENTIFIER = "fastext_extrafeatsv2_nadam_high_len3"
 
     train = pd.read_csv(TRAIN_DATA_FILE)
     test = pd.read_csv(TEST_DATA_FILE)
@@ -143,45 +143,46 @@ if __name__=="__main__":
             "embed_dim": 300,
             "trainable": False,
             "spatial_dropout": 0.5,
-            "gru_dim" : 150,
+            "gru_dim" : 300,
             "cudnn" : True,
-            "bidirectional" : True,
-            "gru_layers": 1,
+            "bidirectional" : False,
+            "gru_layers": 2,
             "add_extra_feats": True,
             "extra_feats_dim" : 11,
+            "attention": False,
             "single_attention_vector":False,
             "apply_before_lstm":False,
-            "pooling": 'mean_max',
-            "fc_dim": 300,
-            "fc_dropout": 0.1,
-            "fc_layers": 2,
-            "optimizer": 'adam',
+            "pooling": 'max_attention',
+            "fc_dim": 256,
+            "fc_dropout": 0.2,
+            "fc_layers": 1,
+            "optimizer": 'nadam',
             "out_dim": 6,
-            "batch_size": 300,
-            "epochs": 10,
+            "batch_size": 256,
+            "epochs": 20,
             "callbacks": [],
             "model_id": MODEL_IDENTIFIER,  
-            "mask_zero":True,
-            "embed_kwargs": {"weights": [embedding_matrix], "mask_zero":True},
-            "opt_kwargs": {"lr":0.001, "decay":0.00001, "clipnorm":5.0},
+            "mask_zero":False,
+            "embed_kwargs": {"weights": [embedding_matrix], "mask_zero":False},
+            #"opt_kwargs": {"lr":0.001, "decay":0.00001, "clipnorm":5.0},
             "gru_kwargs":{"kernel_regularizer":regularizers.l2(0), "recurrent_regularizer":regularizers.l2(0)}
             }
     
     #Initialize model
     def schedule(epoch):
         if epoch == 0:
-            return 0.004
+            return 0.002
         if epoch == 1:
             return 0.002
         if epoch == 2:
-            return 0.001
-        return 0.001
+            return 0.002
+        return 0.002    
         
     callbacks=[LearningRateScheduler(schedule)]
     model = GRUClassifier(**MODEL_PARAMS)
     check_filename="Model_"+str(MODEL_IDENTIFIER)+".check"
     y_preds, y_trues, y_test = outoffold_crossvalidator(model, X_train_all, y, cvlist1, check_filename=check_filename,
-                                                      predict_test=True, X_test=X_test_all, callbacks=callbacks, multiinput=True)
+                                                      predict_test=True, X_test=X_test_all, callbacks=callbacks, multiinput=True, multioutput=True)
     
     #write out train oof and test and configuration file
     oof_preds: pd.DataFrame = train[['id']]
